@@ -10,7 +10,7 @@ import threading
 
 # ================== CẤU HÌNH ==================
 load_dotenv()
-TOKEN = os.getenv("MTQwNDc5MjgwMTUzNDY3NzAzMw.Gdp3ol.otxNXq6EYG3I2UiQuopw4r98cJinOGB65talzc")
+TOKEN = os.getenv("DISCORD_TOKEN")
 
 intents = discord.Intents.default()
 intents.message_content = True

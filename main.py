@@ -180,6 +180,10 @@ async def menu(ctx):
 # ================== API FLASK ==================
 app = Flask(__name__)
 
+@app.route("/")
+def home():
+    return "API is running!"
+
 @app.route("/check", methods=["POST"])
 def check():
     data = request.json

@@ -1,3 +1,3 @@
 ADMINS = [
-   1401399647569838202  # UID Discord admin
+   1265245644558176278  # UID Discord admin
 ]

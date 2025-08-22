@@ -66,19 +66,35 @@ class RedeemModal(Modal, title="Redeem Key"):
     async def on_submit(self, interaction: discord.Interaction):
         try:
             db = load_db()
-            if self.key.value in db["keys"]:
-                db["keys"][self.key.value]["uid"] = str(interaction.user.id)
-                save_db(db)
+            key_value = self.key.value.strip()
 
-                embed = discord.Embed(
-                    title="✅ Redeem Key Thành Công!",
-                    description=f"🔑 Key: `{self.key.value}` đã được gán cho bạn.",
-                    color=discord.Color.green()
-                )
-                embed.set_thumbnail(url=interaction.user.avatar.url if interaction.user.avatar else None)
-                await interaction.response.send_message(embed=embed, ephemeral=True)
+            if key_value in db["keys"]:
+                k = db["keys"][key_value]
+
+                # Nếu key chưa gán user nào thì cho redeem
+                if k["uid"] is None:
+                    k["uid"] = str(interaction.user.id)
+                    save_db(db)
+
+                    embed = discord.Embed(
+                        title="✅ Redeem Key Thành Công!",
+                        description=f"🔑 Key: `{key_value}` đã được gán cho bạn.",
+                        color=discord.Color.green()
+                    )
+                    embed.set_thumbnail(url=interaction.user.avatar.url if interaction.user.avatar else None)
+                    return await interaction.response.send_message(embed=embed, ephemeral=True)
+
+                # Nếu key đã gán cho chính user này thì cho phép check lại
+                elif k["uid"] == str(interaction.user.id):
+                    return await interaction.response.send_message("✅ Bạn đã redeem key này rồi!", ephemeral=True)
+
+                # Nếu key đã gán cho người khác thì từ chối
+                else:
+                    return await interaction.response.send_message("❌ Key này đã được sử dụng bởi người khác!", ephemeral=True)
+
             else:
                 await interaction.response.send_message("❌ Key không hợp lệ!", ephemeral=True)
+
         except Exception as e:
             print("❌ Lỗi Redeem:", e)
             await interaction.response.send_message("⚠️ Lỗi redeem key!", ephemeral=True)
@@ -92,7 +108,6 @@ class CreateKeyModal(Modal, title="Tạo Key"):
             if interaction.user.id not in ADMINS:
                 return await interaction.response.send_message("❌ Bạn không có quyền!", ephemeral=True)
 
-            # Nếu nhập thì lấy key nhập, nếu để trống thì random
             key_value = self.key.value.strip() if self.key.value else None
             if not key_value:
                 key_value = ''.join(random.choices(string.ascii_letters + string.digits, k=16))
@@ -247,3 +262,4 @@ async def menu(ctx):
 if __name__ == "__main__":
     threading.Thread(target=run_flask).start()
     bot.run(TOKEN)
+

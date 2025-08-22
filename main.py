@@ -8,6 +8,7 @@ from config import ADMINS
 from flask import Flask, request, jsonify
 import threading
 import traceback
+from keep_alive import keep_alive   # ✅ thêm keep_alive
 
 # ================== CẤU HÌNH ==================
 load_dotenv()
@@ -18,7 +19,7 @@ intents.message_content = True
 bot = commands.Bot(command_prefix=",", intents=intents, help_command=None)
 
 DB_FILE = "keys.json"
-CHANNEL_ID = 1404789284694917161  # 🔴 THAY BẰNG CHANNEL ID CỦA BẠN
+CHANNEL_ID = 1404789284694917161  # 🔴 Thay bằng Channel ID của bạn
 MENU_MESSAGE_FILE = "menu_message_id.txt"
 
 # ================== HÀM HỖ TRỢ ==================
@@ -268,7 +269,13 @@ def run_flask():
 # ================== START BOT + API ==================
 if __name__ == "__main__":
     try:
+        # ✅ bật web keep_alive để Replit không tắt
+        keep_alive()
+
+        # chạy Flask API song song
         threading.Thread(target=run_flask).start()
+
+        # chạy bot Discord
         bot.run(TOKEN)
     except Exception as e:
         print("❌ Lỗi khi chạy bot:", e)

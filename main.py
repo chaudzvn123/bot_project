@@ -8,7 +8,6 @@ from config import ADMINS
 from flask import Flask, request, jsonify
 import threading
 import traceback
-from keep_alive import keep_alive   # ✅ thêm keep_alive
 
 # ================== CẤU HÌNH ==================
 load_dotenv()
@@ -20,7 +19,20 @@ bot = commands.Bot(command_prefix=",", intents=intents, help_command=None)
 
 DB_FILE = "keys.json"
 CHANNEL_ID = 1404789284694917161  # 🔴 Thay bằng Channel ID của bạn
-MENU_MESSAGE_FILE = "menu_message_id.txt"
+
+# ================== KEEP ALIVE (webserver) ==================
+app_keep = Flask('keep_alive')
+
+@app_keep.route('/')
+def home_keep():
+    return "✅ Bot đang chạy 24/7 trên Replit!"
+
+def run_keep():
+    app_keep.run(host='0.0.0.0', port=8080)
+
+def keep_alive():
+    t = threading.Thread(target=run_keep)
+    t.start()
 
 # ================== HÀM HỖ TRỢ ==================
 def load_db():
@@ -42,20 +54,6 @@ def save_db(data):
         print("❌ Lỗi khi lưu DB:", e)
         traceback.print_exc()
 
-def save_menu_message_id(message_id):
-    with open(MENU_MESSAGE_FILE, "w") as f:
-        f.write(str(message_id))
-
-def load_menu_message_id():
-    if os.path.exists(MENU_MESSAGE_FILE):
-        try:
-            with open(MENU_MESSAGE_FILE, "r") as f:
-                return int(f.read().strip())
-        except Exception as e:
-            print("❌ Lỗi khi load menu ID:", e)
-            traceback.print_exc()
-    return None
-
 # ================== BOT EVENTS ==================
 @bot.event
 async def on_ready():
@@ -64,23 +62,13 @@ async def on_ready():
     try:
         channel = bot.get_channel(CHANNEL_ID)
         if channel:
-            old_msg_id = load_menu_message_id()
-            if old_msg_id:
-                try:
-                    old_msg = await channel.fetch_message(old_msg_id)
-                    if old_msg:
-                        print("📌 Menu đã tồn tại, không gửi thêm.")
-                        return
-                except Exception:
-                    pass
-
             embed = discord.Embed(
                 title="🔧 Hệ thống Key",
                 description="Chọn hành động trong menu bên dưới:",
                 color=0x00ffcc
             )
-            msg = await channel.send(embed=embed, view=MenuView())
-            save_menu_message_id(msg.id)
+            await channel.send(embed=embed, view=MenuView())
+            print("📌 Đã gửi menu mới vào channel.")
     except Exception as e:
         print("❌ Lỗi on_ready:", e)
         traceback.print_exc()
@@ -226,7 +214,7 @@ async def menu(ctx):
         traceback.print_exc()
         await ctx.send("⚠️ Đã xảy ra lỗi khi mở menu!")
 
-# ================== API FLASK ==================
+# ================== API FLASK (check key) ==================
 app = Flask(__name__)
 
 @app.route("/")
@@ -269,7 +257,7 @@ def run_flask():
 # ================== START BOT + API ==================
 if __name__ == "__main__":
     try:
-        # ✅ bật web keep_alive để Replit không tắt
+        # bật web keep_alive để Replit không tắt
         keep_alive()
 
         # chạy Flask API song song

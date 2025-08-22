@@ -3,141 +3,98 @@ from discord.ext import commands
 from discord.ui import View, Select, Modal, TextInput
 import json
 import os
-from dotenv import load_dotenv
-from config import ADMINS
+import random
+import string
+import traceback
 from flask import Flask, request, jsonify
 import threading
-import traceback
 
 # ================== CẤU HÌNH ==================
-load_dotenv()
-TOKEN = os.getenv("DISCORD_TOKEN")
+TOKEN = "YOUR_DISCORD_BOT_TOKEN"  # Thay token bot của bạn
+ADMINS = [123456789012345678]  # Thay bằng Discord UID của bạn
+DATA_FILE = "keys.json"
 
+# ================== FLASK API (keep_alive) ==================
+app = Flask(__name__)
+
+@app.route('/')
+def home():
+    return "✅ Bot đang chạy!"
+
+@app.route('/check_key', methods=['POST'])
+def check_key():
+    data = request.json
+    key = data.get("key")
+    hwid = data.get("hwid")
+
+    db = load_db()
+    if key in db["keys"]:
+        k = db["keys"][key]
+        if k["hwid"] is None:
+            k["hwid"] = hwid
+            save_db(db)
+            return jsonify({"status": "success", "msg": "Key hợp lệ & HWID đã bind"})
+        elif k["hwid"] == hwid:
+            return jsonify({"status": "success", "msg": "Key hợp lệ"})
+        else:
+            return jsonify({"status": "fail", "msg": "HWID không khớp"})
+    return jsonify({"status": "fail", "msg": "Key không tồn tại"})
+
+def run_flask():
+    app.run(host="0.0.0.0", port=8080)
+
+# ================== QUẢN LÝ DATA ==================
+def load_db():
+    if not os.path.exists(DATA_FILE):
+        return {"keys": {}}
+    with open(DATA_FILE, "r") as f:
+        return json.load(f)
+
+def save_db(db):
+    with open(DATA_FILE, "w") as f:
+        json.dump(db, f, indent=4)
+
+# ================== DISCORD BOT ==================
 intents = discord.Intents.default()
 intents.message_content = True
-bot = commands.Bot(command_prefix=",", intents=intents, help_command=None)
+bot = commands.Bot(command_prefix=",", intents=intents)
 
-DB_FILE = "keys.json"
-CHANNEL_ID = 1404789284694917161  # 🔴 Thay bằng Channel ID của bạn
-
-# ================== KEEP ALIVE (webserver) ==================
-app_keep = Flask('keep_alive')
-
-@app_keep.route('/')
-def home_keep():
-    return "✅ Bot đang chạy 24/7 trên Replit!"
-
-def run_keep():
-    app_keep.run(host='0.0.0.0', port=8080)
-
-def keep_alive():
-    t = threading.Thread(target=run_keep)
-    t.start()
-
-# ================== HÀM HỖ TRỢ ==================
-def load_db():
-    if not os.path.exists(DB_FILE):
-        return {"keys": {}}
-    try:
-        with open(DB_FILE, "r") as f:
-            return json.load(f)
-    except Exception as e:
-        print("❌ Lỗi khi load DB:", e)
-        traceback.print_exc()
-        return {"keys": {}}
-
-def save_db(data):
-    try:
-        with open(DB_FILE, "w") as f:
-            json.dump(data, f, indent=4)
-    except Exception as e:
-        print("❌ Lỗi khi lưu DB:", e)
-        traceback.print_exc()
-
-# ================== BOT EVENTS ==================
-@bot.event
-async def on_ready():
-    print(f"✅ Bot {bot.user} đã online!")
-
-    try:
-        channel = bot.get_channel(CHANNEL_ID)
-        if channel:
-            embed = discord.Embed(
-                title="🔧 Hệ thống Key",
-                description="Chọn hành động trong menu bên dưới:",
-                color=0x00ffcc
-            )
-            await channel.send(embed=embed, view=MenuView())
-            print("📌 Đã gửi menu mới vào channel.")
-    except Exception as e:
-        print("❌ Lỗi on_ready:", e)
-        traceback.print_exc()
-
-@bot.event
-async def on_command_error(ctx, error):
-    print(f"❌ Lỗi command: {error}")
-    traceback.print_exc()
-    await ctx.send(f"⚠️ Lỗi: `{error}`")
-
-# ================== MODALS ==================
-class RedeemModal(Modal, title="🔑 Redeem Key"):
-    key = TextInput(label="Nhập key của bạn", placeholder="Ví dụ: ABC123", required=True)
+# -------- MODALS --------
+class RedeemModal(Modal, title="Redeem Key"):
+    key = TextInput(label="Nhập Key", style=discord.TextStyle.short)
 
     async def on_submit(self, interaction: discord.Interaction):
         try:
             db = load_db()
-            keys = db["keys"]
-            user_id = str(interaction.user.id)
-            key_value = str(self.key.value).strip()
-
-            if key_value not in keys:
-                return await interaction.response.send_message("❌ Key không tồn tại!", ephemeral=True)
-
-            if keys[key_value]["uid"] is not None:
-                return await interaction.response.send_message("❌ Key này đã được sử dụng!", ephemeral=True)
-
-            keys[key_value]["uid"] = user_id
-            keys[key_value]["hwid"] = None
-            save_db(db)
-
-            await interaction.response.send_message(
-                f"✅ Redeem thành công! Key `{key_value}` đã bind với UID {user_id}", ephemeral=True
-            )
+            if self.key.value in db["keys"]:
+                db["keys"][self.key.value]["uid"] = str(interaction.user.id)
+                save_db(db)
+                await interaction.response.send_message("✅ Key đã được redeem!", ephemeral=True)
+            else:
+                await interaction.response.send_message("❌ Key không hợp lệ!", ephemeral=True)
         except Exception as e:
-            print("❌ Lỗi RedeemModal:", e)
-            traceback.print_exc()
-            await interaction.response.send_message("⚠️ Đã xảy ra lỗi khi redeem!", ephemeral=True)
+            print("❌ Lỗi Redeem:", e)
+            await interaction.response.send_message("⚠️ Lỗi redeem key!", ephemeral=True)
 
-class CreateKeyModal(Modal, title="🛠️ Tạo Key"):
-    key = TextInput(label="Nhập key muốn tạo", placeholder="Ví dụ: NEWKEY123", required=True)
+class CreateKeyModal(Modal, title="Tạo Key"):
+    uid = TextInput(label="UID (Discord ID)", required=True)
 
     async def on_submit(self, interaction: discord.Interaction):
         try:
             if interaction.user.id not in ADMINS:
-                return await interaction.response.send_message("❌ Bạn không có quyền tạo key!", ephemeral=True)
+                return await interaction.response.send_message("❌ Bạn không có quyền!", ephemeral=True)
 
+            key = ''.join(random.choices(string.ascii_letters + string.digits, k=16))
             db = load_db()
-            keys = db["keys"]
-            key_value = str(self.key.value).strip()
-
-            if key_value in keys:
-                return await interaction.response.send_message("❌ Key đã tồn tại!", ephemeral=True)
-
-            keys[key_value] = {"uid": None, "hwid": None}
+            db["keys"][key] = {"uid": self.uid.value, "hwid": None}
             save_db(db)
 
-            await interaction.response.send_message(f"✅ Đã tạo key mới: `{key_value}`", ephemeral=True)
+            await interaction.response.send_message(f"✅ Key mới: `{key}`", ephemeral=True)
         except Exception as e:
-            print("❌ Lỗi CreateKeyModal:", e)
-            traceback.print_exc()
-            await interaction.response.send_message("⚠️ Lỗi khi tạo key!", ephemeral=True)
+            print("❌ Lỗi CreateKey:", e)
+            await interaction.response.send_message("⚠️ Lỗi tạo key!", ephemeral=True)
 
-# ================== MENU ==================
-class MenuView(View):
-    def __init__(self):
-        super().__init__(timeout=None)
-        self.add_item(MenuSelect())
-
+# -------- MENU SELECT --------
 class MenuSelect(Select):
     def __init__(self):
         options = [
@@ -145,7 +102,8 @@ class MenuSelect(Select):
             discord.SelectOption(label="Reset HWID", description="Reset HWID theo UID"),
             discord.SelectOption(label="Tạo Key (Admin)", description="Admin tạo key mới"),
             discord.SelectOption(label="Check Key", description="Kiểm tra key của bạn"),
-            discord.SelectOption(label="Get Script", description="Lấy script Roblox")
+            discord.SelectOption(label="Get Script", description="Lấy script Roblox"),
+            discord.SelectOption(label="📜 Danh sách Key", description="Chỉ Admin mới dùng")
         ]
         super().__init__(placeholder="Chọn hành động...", options=options)
 
@@ -176,9 +134,9 @@ class MenuSelect(Select):
                 for k, v in keys.items():
                     if v["uid"] == user_id:
                         return await interaction.response.send_message(
-                            f"✅ Bạn có key `{k}` | HWID: `{v['hwid']}`", ephemeral=True
+                            f"✅ Key: `{k}` | HWID: `{v['hwid']}`", ephemeral=True
                         )
-                await interaction.response.send_message("❌ Bạn không có key!", ephemeral=True)
+                await interaction.response.send_message("❌ Bạn chưa redeem key!", ephemeral=True)
 
             elif choice == "Get Script":
                 for k, v in keys.items():
@@ -189,82 +147,50 @@ getgenv().ID = "{user_id}"
 loadstring(game:HttpGet("https://raw.githubusercontent.com/chaudzvn123/dangcap/refs/heads/main/hub"))()
 ```'''
                         try:
-                            await interaction.user.send(f"✅ Đây là script của bạn:\n{script}")
-                            return await interaction.response.send_message("📩 Script đã được gửi vào DM!", ephemeral=True)
+                            await interaction.user.send(f"✅ Script của bạn:\n{script}")
+                            return await interaction.response.send_message("📩 Script đã gửi vào DM!", ephemeral=True)
                         except:
-                            return await interaction.response.send_message("❌ Không thể gửi DM! Hãy bật tin nhắn riêng.", ephemeral=True)
+                            return await interaction.response.send_message("❌ Không gửi được DM, bật tin nhắn riêng!", ephemeral=True)
                 await interaction.response.send_message("❌ Bạn chưa redeem key!", ephemeral=True)
+
+            elif choice == "📜 Danh sách Key":
+                if interaction.user.id not in ADMINS:
+                    return await interaction.response.send_message("❌ Bạn không có quyền!", ephemeral=True)
+
+                if not keys:
+                    return await interaction.response.send_message("⚠️ Chưa có key nào!", ephemeral=True)
+
+                msg = "📜 **Danh sách key:**\n"
+                for k, v in keys.items():
+                    msg += f"- `{k}` | UID: `{v['uid']}` | HWID: `{v['hwid']}`\n"
+
+                if len(msg) > 1900:
+                    with open("keys_list.txt", "w", encoding="utf-8") as f:
+                        f.write(msg)
+                    await interaction.response.send_message(
+                        "📂 Danh sách key dài, xuất file:",
+                        file=discord.File("keys_list.txt"),
+                        ephemeral=True
+                    )
+                else:
+                    await interaction.response.send_message(msg, ephemeral=True)
+
         except Exception as e:
             print("❌ Lỗi MenuSelect:", e)
             traceback.print_exc()
-            await interaction.response.send_message("⚠️ Lỗi khi xử lý menu!", ephemeral=True)
+            await interaction.response.send_message("⚠️ Lỗi xử lý menu!", ephemeral=True)
 
-# ================== LỆNH ==================
+class MenuView(View):
+    def __init__(self):
+        super().__init__(timeout=None)
+        self.add_item(MenuSelect())
+
+# -------- LỆNH HIỆN MENU --------
 @bot.command()
 async def menu(ctx):
-    try:
-        embed = discord.Embed(
-            title="🔧 Hệ thống Key",
-            description="Chọn hành động trong menu bên dưới:",
-            color=0x00ffcc
-        )
-        await ctx.send(embed=embed, view=MenuView())
-    except Exception as e:
-        print("❌ Lỗi lệnh menu:", e)
-        traceback.print_exc()
-        await ctx.send("⚠️ Đã xảy ra lỗi khi mở menu!")
+    await ctx.send("📌 Chọn chức năng từ menu:", view=MenuView())
 
-# ================== API FLASK (check key) ==================
-app = Flask(__name__)
-
-@app.route("/")
-def home():
-    return "API is running!"
-
-@app.route("/check", methods=["POST"])
-def check():
-    try:
-        data = request.json
-        uid = str(data.get("uid"))
-        hwid = str(data.get("hwid"))
-
-        db = load_db()
-        keys = db["keys"]
-
-        for k, v in keys.items():
-            if v["uid"] == uid:
-                if v["hwid"] is None:
-                    v["hwid"] = hwid
-                    save_db(db)
-                    return jsonify({"status": "success", "key": k, "uid": uid})
-                elif v["hwid"] == hwid:
-                    return jsonify({"status": "success", "key": k, "uid": uid})
-                else:
-                    return jsonify({"status": "hwid_mismatch"})
-        return jsonify({"status": "no_key"})
-    except Exception as e:
-        print("❌ Lỗi API /check:", e)
-        traceback.print_exc()
-        return jsonify({"status": "error", "message": str(e)})
-
-def run_flask():
-    try:
-        app.run(host="0.0.0.0", port=5000)
-    except Exception as e:
-        print("❌ Lỗi Flask:", e)
-        traceback.print_exc()
-
-# ================== START BOT + API ==================
+# ================== CHẠY BOT & FLASK ==================
 if __name__ == "__main__":
-    try:
-        # bật web keep_alive để Replit không tắt
-        keep_alive()
-
-        # chạy Flask API song song
-        threading.Thread(target=run_flask).start()
-
-        # chạy bot Discord
-        bot.run(TOKEN)
-    except Exception as e:
-        print("❌ Lỗi khi chạy bot:", e)
-        traceback.print_exc()
+    threading.Thread(target=run_flask).start()
+    bot.run(TOKEN)

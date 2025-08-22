@@ -11,7 +11,7 @@ import threading
 
 # ================== CẤU HÌNH ==================
 TOKEN = "YOUR_DISCORD_BOT_TOKEN"  # Thay token bot của bạn
-ADMINS = [123456789012345678]  # Thay bằng Discord UID của bạn
+ADMINS = [123456789012345678]     # Thay bằng Discord UID của bạn
 DATA_FILE = "keys.json"
 
 # ================== FLASK API (keep_alive) ==================
@@ -84,6 +84,7 @@ class RedeemModal(Modal, title="Redeem Key"):
             await interaction.response.send_message("⚠️ Lỗi redeem key!", ephemeral=True)
 
 class CreateKeyModal(Modal, title="Tạo Key"):
+    key = TextInput(label="Nhập Key (để trống sẽ random)", required=False)
     uid = TextInput(label="UID (Discord ID hoặc để trống)", required=False)
 
     async def on_submit(self, interaction: discord.Interaction):
@@ -91,23 +92,33 @@ class CreateKeyModal(Modal, title="Tạo Key"):
             if interaction.user.id not in ADMINS:
                 return await interaction.response.send_message("❌ Bạn không có quyền!", ephemeral=True)
 
-            key = ''.join(random.choices(string.ascii_letters + string.digits, k=16))
+            # Nếu nhập thì lấy key nhập, nếu để trống thì random
+            key_value = self.key.value.strip() if self.key.value else None
+            if not key_value:
+                key_value = ''.join(random.choices(string.ascii_letters + string.digits, k=16))
+
             uid_value = self.uid.value.strip() if self.uid.value else None
-            if uid_value == "": uid_value = None
+            if uid_value == "":
+                uid_value = None
 
             db = load_db()
-            db["keys"][key] = {"uid": uid_value, "hwid": None}
+            if key_value in db["keys"]:
+                return await interaction.response.send_message("⚠️ Key này đã tồn tại!", ephemeral=True)
+
+            db["keys"][key_value] = {"uid": uid_value, "hwid": None}
             save_db(db)
 
             embed = discord.Embed(
                 title="🎉 TẠO KEY THÀNH CÔNG!",
-                description=f"🔑 Key mới:\n```{key}```",
+                description=f"🔑 Key mới:\n```{key_value}```",
                 color=discord.Color.blue()
             )
             embed.add_field(name="👤 UID", value=f"`{uid_value}`" if uid_value else "`Chưa gán`", inline=True)
             embed.add_field(name="💻 HWID", value="`Chưa gán`", inline=True)
-            embed.set_footer(text=f"Tạo bởi {interaction.user}", icon_url=interaction.user.avatar.url if interaction.user.avatar else None)
-            embed.set_image(url="https://media.tenor.com/On7kvXhzml4AAAAj/loading-gif.gif")
+            embed.set_footer(
+                text=f"Tạo bởi {interaction.user}", 
+                icon_url=interaction.user.avatar.url if interaction.user.avatar else None
+            )
 
             await interaction.response.send_message(embed=embed, ephemeral=True)
 

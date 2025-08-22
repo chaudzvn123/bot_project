@@ -69,7 +69,14 @@ class RedeemModal(Modal, title="Redeem Key"):
             if self.key.value in db["keys"]:
                 db["keys"][self.key.value]["uid"] = str(interaction.user.id)
                 save_db(db)
-                await interaction.response.send_message("✅ Key đã được redeem!", ephemeral=True)
+
+                embed = discord.Embed(
+                    title="✅ Redeem Key Thành Công!",
+                    description=f"🔑 Key: `{self.key.value}` đã được gán cho bạn.",
+                    color=discord.Color.green()
+                )
+                embed.set_thumbnail(url=interaction.user.avatar.url if interaction.user.avatar else None)
+                await interaction.response.send_message(embed=embed, ephemeral=True)
             else:
                 await interaction.response.send_message("❌ Key không hợp lệ!", ephemeral=True)
         except Exception as e:
@@ -77,7 +84,7 @@ class RedeemModal(Modal, title="Redeem Key"):
             await interaction.response.send_message("⚠️ Lỗi redeem key!", ephemeral=True)
 
 class CreateKeyModal(Modal, title="Tạo Key"):
-    uid = TextInput(label="UID (Discord ID)", required=True)
+    uid = TextInput(label="UID (Discord ID hoặc để trống)", required=False)
 
     async def on_submit(self, interaction: discord.Interaction):
         try:
@@ -85,11 +92,25 @@ class CreateKeyModal(Modal, title="Tạo Key"):
                 return await interaction.response.send_message("❌ Bạn không có quyền!", ephemeral=True)
 
             key = ''.join(random.choices(string.ascii_letters + string.digits, k=16))
+            uid_value = self.uid.value.strip() if self.uid.value else None
+            if uid_value == "": uid_value = None
+
             db = load_db()
-            db["keys"][key] = {"uid": self.uid.value, "hwid": None}
+            db["keys"][key] = {"uid": uid_value, "hwid": None}
             save_db(db)
 
-            await interaction.response.send_message(f"✅ Key mới: `{key}`", ephemeral=True)
+            embed = discord.Embed(
+                title="🎉 TẠO KEY THÀNH CÔNG!",
+                description=f"🔑 Key mới:\n```{key}```",
+                color=discord.Color.blue()
+            )
+            embed.add_field(name="👤 UID", value=f"`{uid_value}`" if uid_value else "`Chưa gán`", inline=True)
+            embed.add_field(name="💻 HWID", value="`Chưa gán`", inline=True)
+            embed.set_footer(text=f"Tạo bởi {interaction.user}", icon_url=interaction.user.avatar.url if interaction.user.avatar else None)
+            embed.set_image(url="https://media.tenor.com/On7kvXhzml4AAAAj/loading-gif.gif")
+
+            await interaction.response.send_message(embed=embed, ephemeral=True)
+
         except Exception as e:
             print("❌ Lỗi CreateKey:", e)
             await interaction.response.send_message("⚠️ Lỗi tạo key!", ephemeral=True)
@@ -98,14 +119,14 @@ class CreateKeyModal(Modal, title="Tạo Key"):
 class MenuSelect(Select):
     def __init__(self):
         options = [
-            discord.SelectOption(label="Redeem Key", description="Nhập key để bind"),
-            discord.SelectOption(label="Reset HWID", description="Reset HWID theo UID"),
-            discord.SelectOption(label="Tạo Key (Admin)", description="Admin tạo key mới"),
-            discord.SelectOption(label="Check Key", description="Kiểm tra key của bạn"),
-            discord.SelectOption(label="Get Script", description="Lấy script Roblox"),
-            discord.SelectOption(label="📜 Danh sách Key", description="Chỉ Admin mới dùng")
+            discord.SelectOption(label="Redeem Key", emoji="🔑"),
+            discord.SelectOption(label="Reset HWID", emoji="♻️"),
+            discord.SelectOption(label="Tạo Key (Admin)", emoji="🛠️"),
+            discord.SelectOption(label="Check Key", emoji="🔍"),
+            discord.SelectOption(label="Get Script", emoji="📜"),
+            discord.SelectOption(label="Danh sách Key (Admin)", emoji="📂")
         ]
-        super().__init__(placeholder="Chọn hành động...", options=options)
+        super().__init__(placeholder="📌 Chọn chức năng...", options=options)
 
     async def callback(self, interaction: discord.Interaction):
         try:
@@ -122,7 +143,12 @@ class MenuSelect(Select):
                     if v["uid"] == user_id:
                         v["hwid"] = None
                         save_db(db)
-                        return await interaction.response.send_message(f"✅ HWID của key `{k}` đã reset!", ephemeral=True)
+                        embed = discord.Embed(
+                            title="♻️ Reset HWID",
+                            description=f"✅ HWID của key `{k}` đã reset!",
+                            color=discord.Color.orange()
+                        )
+                        return await interaction.response.send_message(embed=embed, ephemeral=True)
                 await interaction.response.send_message("❌ Bạn chưa có key!", ephemeral=True)
 
             elif choice == "Tạo Key (Admin)":
@@ -133,9 +159,12 @@ class MenuSelect(Select):
             elif choice == "Check Key":
                 for k, v in keys.items():
                     if v["uid"] == user_id:
-                        return await interaction.response.send_message(
-                            f"✅ Key: `{k}` | HWID: `{v['hwid']}`", ephemeral=True
+                        embed = discord.Embed(
+                            title="🔍 Thông tin Key",
+                            description=f"🔑 `{k}`\n💻 HWID: `{v['hwid']}`",
+                            color=discord.Color.purple()
                         )
+                        return await interaction.response.send_message(embed=embed, ephemeral=True)
                 await interaction.response.send_message("❌ Bạn chưa redeem key!", ephemeral=True)
 
             elif choice == "Get Script":
@@ -153,7 +182,7 @@ loadstring(game:HttpGet("https://raw.githubusercontent.com/chaudzvn123/dangcap/r
                             return await interaction.response.send_message("❌ Không gửi được DM, bật tin nhắn riêng!", ephemeral=True)
                 await interaction.response.send_message("❌ Bạn chưa redeem key!", ephemeral=True)
 
-            elif choice == "📜 Danh sách Key":
+            elif choice == "Danh sách Key (Admin)":
                 if interaction.user.id not in ADMINS:
                     return await interaction.response.send_message("❌ Bạn không có quyền!", ephemeral=True)
 
@@ -173,7 +202,12 @@ loadstring(game:HttpGet("https://raw.githubusercontent.com/chaudzvn123/dangcap/r
                         ephemeral=True
                     )
                 else:
-                    await interaction.response.send_message(msg, ephemeral=True)
+                    embed = discord.Embed(
+                        title="📂 Danh sách Key",
+                        description=msg,
+                        color=discord.Color.teal()
+                    )
+                    await interaction.response.send_message(embed=embed, ephemeral=True)
 
         except Exception as e:
             print("❌ Lỗi MenuSelect:", e)
@@ -188,7 +222,15 @@ class MenuView(View):
 # -------- LỆNH HIỆN MENU --------
 @bot.command()
 async def menu(ctx):
-    await ctx.send("📌 Chọn chức năng từ menu:", view=MenuView())
+    embed = discord.Embed(
+        title="📌 MENU QUẢN LÝ KEY",
+        description="Chọn chức năng bên dưới để sử dụng bot",
+        color=discord.Color.gold()
+    )
+    embed.set_thumbnail(url=ctx.author.avatar.url if ctx.author.avatar else None)
+    embed.set_footer(text="Bot Key System by You")
+
+    await ctx.send(embed=embed, view=MenuView())
 
 # ================== CHẠY BOT & FLASK ==================
 if __name__ == "__main__":
